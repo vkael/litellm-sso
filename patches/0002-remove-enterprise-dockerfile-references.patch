@@ -1,0 +1,128 @@
+diff --git a/Dockerfile b/Dockerfile
+index b3ee85e9ed..c9ca433cc1 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -56,7 +56,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -77,7 +76,7 @@ COPY . .
+ RUN rm -rf litellm/proxy/_experimental/out
+ COPY --from=ui-builder /ui/out/. litellm/proxy/_experimental/out/
+ 
+-# Build Admin UI before final sync (applies the enterprise color override when present)
++# Build Admin UI before final sync
+ RUN sed -i 's/\r$//' docker/build_admin_ui.sh && chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
+ 
+ # Install project and workspace packages (fast - deps already cached)
+@@ -119,10 +118,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every
+ # runtime uid can read and that no cache volume mount shadows. The paths are
+
+diff --git a/backend/Dockerfile b/backend/Dockerfile
+index aa01b9fba8..5db2b2a9ec 100644
+--- a/backend/Dockerfile
++++ b/backend/Dockerfile
+@@ -39,7 +39,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
+
+diff --git a/docker/Dockerfile.database b/docker/Dockerfile.database
+index c1348f6823..663c73b101 100644
+--- a/docker/Dockerfile.database
++++ b/docker/Dockerfile.database
+@@ -54,7 +54,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -75,7 +74,7 @@ COPY . .
+ RUN rm -rf litellm/proxy/_experimental/out
+ COPY --from=ui-builder /ui/out/. litellm/proxy/_experimental/out/
+ 
+-# Build Admin UI before final sync (applies the enterprise color override when present)
++# Build Admin UI before final sync
+ RUN sed -i 's/\r$//' docker/build_admin_ui.sh && chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
+ 
+ # Install project and workspace packages (fast - deps already cached)
+@@ -116,10 +115,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every
+ # runtime uid can read and that no cache volume mount shadows (unlike
+
+diff --git a/docker/Dockerfile.non_root b/docker/Dockerfile.non_root
+index 2221435a83..9edd00d36b 100644
+--- a/docker/Dockerfile.non_root
++++ b/docker/Dockerfile.non_root
+@@ -59,7 +59,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -136,10 +135,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every runtime
+ # uid can read and that no cache volume mount shadows (unlike /app/.cache or
+
+diff --git a/gateway/Dockerfile b/gateway/Dockerfile
+index 308d70a6b2..d8ecc54b20 100644
+--- a/gateway/Dockerfile
++++ b/gateway/Dockerfile
+@@ -39,7 +39,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
+
+diff --git a/migrations/Dockerfile b/migrations/Dockerfile
+index c6d1b0cc46..383d036151 100644
+--- a/migrations/Dockerfile
++++ b/migrations/Dockerfile
+@@ -51,7 +51,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
