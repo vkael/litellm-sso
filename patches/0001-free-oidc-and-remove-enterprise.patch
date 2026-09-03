@@ -1,0 +1,523 @@
+diff --git a/Dockerfile b/Dockerfile
+index b3ee85e9ed..c9ca433cc1 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -56,7 +56,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -77,7 +76,7 @@ COPY . .
+ RUN rm -rf litellm/proxy/_experimental/out
+ COPY --from=ui-builder /ui/out/. litellm/proxy/_experimental/out/
+ 
+-# Build Admin UI before final sync (applies the enterprise color override when present)
++# Build Admin UI before final sync
+ RUN sed -i 's/\r$//' docker/build_admin_ui.sh && chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
+ 
+ # Install project and workspace packages (fast - deps already cached)
+@@ -119,10 +118,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every
+ # runtime uid can read and that no cache volume mount shadows. The paths are
+diff --git a/LICENSE b/LICENSE
+index 3bfef5bae9..dd11dc5235 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -1,8 +1,3 @@
+-Portions of this software are licensed as follows:
+-
+-* All content that resides under the "enterprise/" directory of this repository, if that directory exists, is licensed under the license defined in "enterprise/LICENSE".
+-* Content outside of the above mentioned directories or restrictions above is available under the MIT license as defined below.
+----
+ MIT License
+ 
+ Copyright (c) 2023 Berri AI
+diff --git a/backend/Dockerfile b/backend/Dockerfile
+index aa01b9fba8..5db2b2a9ec 100644
+--- a/backend/Dockerfile
++++ b/backend/Dockerfile
+@@ -39,7 +39,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
+diff --git a/docker/Dockerfile.database b/docker/Dockerfile.database
+index c1348f6823..663c73b101 100644
+--- a/docker/Dockerfile.database
++++ b/docker/Dockerfile.database
+@@ -54,7 +54,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -75,7 +74,7 @@ COPY . .
+ RUN rm -rf litellm/proxy/_experimental/out
+ COPY --from=ui-builder /ui/out/. litellm/proxy/_experimental/out/
+ 
+-# Build Admin UI before final sync (applies the enterprise color override when present)
++# Build Admin UI before final sync
+ RUN sed -i 's/\r$//' docker/build_admin_ui.sh && chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
+ 
+ # Install project and workspace packages (fast - deps already cached)
+@@ -116,10 +115,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every
+ # runtime uid can read and that no cache volume mount shadows (unlike
+diff --git a/docker/Dockerfile.non_root b/docker/Dockerfile.non_root
+index 2221435a83..9edd00d36b 100644
+--- a/docker/Dockerfile.non_root
++++ b/docker/Dockerfile.non_root
+@@ -59,7 +59,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ 
+ # Copy dependency metadata first for layer caching
+ COPY pyproject.toml uv.lock ./
+-COPY enterprise/pyproject.toml enterprise/
+ COPY litellm-proxy-extras/pyproject.toml litellm-proxy-extras/
+ 
+ # Install third-party dependencies (cached unless pyproject.toml/uv.lock change)
+@@ -136,10 +135,6 @@ COPY --from=builder /app/.venv /app/.venv
+ COPY --from=builder /app/docker /app/docker
+ COPY --from=builder /app/schema.prisma /app/schema.prisma
+ COPY --from=builder /app/litellm/proxy/prisma_migration.py /app/litellm/proxy/prisma_migration.py
+-# enterprise/ is imported by source path at runtime (proxy_cli puts the
+-# working directory on sys.path; litellm/proxy/hooks resolves
+-# enterprise.enterprise_hooks from it)
+-COPY --from=builder /app/enterprise /app/enterprise
+ COPY --from=builder /app/litellm-proxy-extras /app/litellm-proxy-extras
+ # Prisma CLI + engines are baked under /opt/prisma, a fixed path every runtime
+ # uid can read and that no cache volume mount shadows (unlike /app/.cache or
+diff --git a/docker/build_admin_ui.sh b/docker/build_admin_ui.sh
+index f84aba7c05..959c94014e 100755
+--- a/docker/build_admin_ui.sh
++++ b/docker/build_admin_ui.sh
+@@ -8,13 +8,7 @@ echo
+ pwd
+ 
+ 
+-# only run this step for litellm enterprise, we run this if enterprise/enterprise_ui/_enterprise.json exists
+-if [ ! -f "enterprise/enterprise_ui/enterprise_colors.json" ]; then
+-    echo "Admin UI - using default LiteLLM UI"
+-    exit 0
+-fi
+-
+-echo "Building Custom Admin UI..."
++echo "Building Admin UI..."
+ 
+ # Install dependencies
+ # Check if we are on macOS
+diff --git a/gateway/Dockerfile b/gateway/Dockerfile
+index 308d70a6b2..d8ecc54b20 100644
+--- a/gateway/Dockerfile
++++ b/gateway/Dockerfile
+@@ -39,7 +39,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
+diff --git a/litellm/proxy/enterprise b/litellm/proxy/enterprise
+deleted file mode 120000
+index 6ee73080d0..0000000000
+--- a/litellm/proxy/enterprise
++++ /dev/null
+@@ -1 +0,0 @@
+-../../enterprise
+\ No newline at end of file
+diff --git a/litellm/proxy/management_endpoints/ui_sso.py b/litellm/proxy/management_endpoints/ui_sso.py
+index 3c135650de..fe7ab0f262 100644
+--- a/litellm/proxy/management_endpoints/ui_sso.py
++++ b/litellm/proxy/management_endpoints/ui_sso.py
+@@ -1028,27 +1028,6 @@ def _merge_sso_token_claims(
+     )
+ 
+ 
+-async def _raise_if_sso_exceeds_free_user_limit(premium_user: bool, prisma_client: PrismaClient | None) -> None:
+-    """Free tier allows SSO for up to 5 billable users; beyond that requires an Enterprise license."""
+-    if premium_user is True:
+-        return
+-    if prisma_client is None:
+-        raise ProxyException(
+-            message=CommonProxyErrors.db_not_connected_error.value,
+-            type=ProxyErrorTypes.auth_error,
+-            param="premium_user",
+-            code=status.HTTP_403_FORBIDDEN,
+-        )
+-    billable_users: Final = await UserRepository(prisma_client).count_billable_users()
+-    if billable_users and billable_users > 5:
+-        raise ProxyException(
+-            message="You must be a LiteLLM Enterprise user to use SSO for more than 5 users. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You configured SSO (one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GENERIC_CLIENT_ID`, or SAML) in your env. Please unset it",
+-            type=ProxyErrorTypes.auth_error,
+-            param="premium_user",
+-            code=status.HTTP_403_FORBIDDEN,
+-        )
+-
+-
+ @router.get("/sso/key/generate", tags=["experimental"], include_in_schema=False)
+ async def google_login(
+     request: Request,
+@@ -1066,8 +1045,6 @@ async def google_login(
+     from litellm.proxy.proxy_server import (
+         cli_sso_session_cache,
+         general_settings,
+-        premium_user,
+-        prisma_client,
+         user_api_key_cache,
+         user_custom_ui_sso_sign_in_handler,
+     )
+@@ -1083,15 +1060,6 @@ async def google_login(
+         if is_disabled:
+             return admin_ui_disabled()
+ 
+-    ####### Check if user is a Enterprise / Premium User #######
+-    if (
+-        microsoft_client_id is not None
+-        or google_client_id is not None
+-        or generic_client_id is not None
+-        or SAMLAuthHandler.is_saml_configured()
+-    ):
+-        await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+-
+     ####### Detect DB + MASTER KEY in .env #######
+     missing_env_vars: Final = show_missing_vars_in_env()
+     if missing_env_vars is not None:
+@@ -1115,18 +1083,14 @@ async def google_login(
+ 
+     # check if user defined a custom auth sso sign in handler, if yes, use it
+     if user_custom_ui_sso_sign_in_handler is not None:
+-        try:
+-            from litellm_enterprise.proxy.auth.custom_sso_handler import (
+-                EnterpriseCustomSSOHandler,
+-            )
+-
+-            return await EnterpriseCustomSSOHandler.handle_custom_ui_sso_sign_in(
+-                request=request,
+-            )
+-        except ImportError:
+-            raise ValueError(
+-                "Enterprise features are not available. Custom UI SSO sign-in requires LiteLLM Enterprise."
+-            )
++        result: Final = await user_custom_ui_sso_sign_in_handler.handle_custom_ui_sso_sign_in(request=request)
++        return await SSOAuthenticationHandler.get_redirect_response_from_openid(
++            result=result,
++            request=request,
++            received_response=None,
++            generic_client_id=None,
++            ui_access_mode=general_settings.get("ui_access_mode", None),
++        )
+ 
+     if (
+         microsoft_client_id is None
+@@ -2162,7 +2126,6 @@ async def saml_callback(request: Request):
+         general_settings,
+         jwt_handler,
+         master_key,
+-        premium_user,
+         prisma_client,
+         user_api_key_cache,
+     )
+@@ -2187,8 +2150,6 @@ async def saml_callback(request: Request):
+ 
+     result: Final = await SAMLAuthHandler.handle_acs(request=request, cache=user_api_key_cache, post_data=post_data)
+ 
+-    await _raise_if_sso_exceeds_free_user_limit(premium_user, prisma_client)
+-
+     ui_access_mode: Final = general_settings.get("ui_access_mode", None)
+     relay_state: Final = post_data.get("RelayState")
+     cp_return_to: Final[str | None] = (
+@@ -4608,22 +4569,10 @@ async def debug_sso_login(request: Request):
+     PROXY_BASE_URL should be the your deployed proxy endpoint, e.g. PROXY_BASE_URL="https://litellm-production-7002.up.railway.app/"
+     Example:
+     """
+-    from litellm.proxy.proxy_server import premium_user
+-
+     microsoft_client_id: Final = os.getenv("MICROSOFT_CLIENT_ID", None)
+     google_client_id: Final = os.getenv("GOOGLE_CLIENT_ID", None)
+     generic_client_id: Final = os.getenv("GENERIC_CLIENT_ID", None)
+ 
+-    ####### Check if user is a Enterprise / Premium User #######
+-    if microsoft_client_id is not None or google_client_id is not None or generic_client_id is not None:
+-        if premium_user is not True:
+-            raise ProxyException(
+-                message="You must be a LiteLLM Enterprise user to use SSO. If you have a license please set `LITELLM_LICENSE` in your env. If you want to obtain a license meet with us here: https://enterprise.litellm.ai/demo You are seeing this error message because You set one of `MICROSOFT_CLIENT_ID`, `GOOGLE_CLIENT_ID`, or `GENERIC_CLIENT_ID` in your env. Please unset this",
+-                type=ProxyErrorTypes.auth_error,
+-                param="premium_user",
+-                code=status.HTTP_403_FORBIDDEN,
+-            )
+-
+     # get url from request
+     redirect_url: Final = SSOAuthenticationHandler.get_redirect_url_for_sso(
+         request=request,
+diff --git a/litellm/proxy/proxy_server.py b/litellm/proxy/proxy_server.py
+index 7dced4e26b..bdb2e9c906 100644
+--- a/litellm/proxy/proxy_server.py
++++ b/litellm/proxy/proxy_server.py
+@@ -241,8 +241,6 @@ from litellm.constants import (
+     MONTHLY_SPEND_REPORT_JOB_ID,
+     PROMETHEUS_FALLBACK_STATS_JOB_ID,
+     PROMETHEUS_FALLBACK_STATS_SEND_TIME_HOURS,
+-    PROXY_BATCH_POLLING_ENABLED,
+-    PROXY_BATCH_POLLING_INTERVAL,
+     PROXY_BATCH_WRITE_AT,
+     PROXY_BUDGET_RESCHEDULER_MAX_TIME,
+     PROXY_BUDGET_RESCHEDULER_MIN_TIME,
+@@ -731,30 +729,6 @@ from fastapi.security import OAuth2PasswordBearer
+ from fastapi.security.api_key import APIKeyHeader
+ from fastapi.staticfiles import StaticFiles
+ 
+-# import enterprise folder
+-enterprise_router = APIRouter()
+-try:
+-    # when using litellm cli
+-    from litellm.proxy import enterprise
+-except Exception:
+-    # when using litellm docker image
+-    try:
+-        import enterprise
+-    except Exception:
+-        pass
+-
+-###################
+-# Import enterprise routes
+-try:
+-    from litellm_enterprise.proxy.enterprise_routes import router as _enterprise_router
+-    from litellm_enterprise.proxy.proxy_server import EnterpriseProxyConfig
+-
+-    enterprise_router = _enterprise_router
+-    enterprise_proxy_config: EnterpriseProxyConfig | None = EnterpriseProxyConfig()
+-except ImportError:
+-    enterprise_proxy_config = None
+-###################
+-
+ server_root_path: Final = get_server_root_path()
+ _license_check = LicenseCheck()
+ premium_user: bool = _license_check.is_premium()
+@@ -999,7 +973,6 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[None, None]:
+         store_model_in_db, \
+         premium_user, \
+         _license_check, \
+-        proxy_batch_polling_interval, \
+         shared_aiohttp_session
+     import json
+ 
+@@ -2269,7 +2242,6 @@ litellm_proxy_admin_name = LITELLM_PROXY_ADMIN_NAME
+ ui_access_mode: Literal["admin", "all"] | dict = "all"
+ proxy_budget_rescheduler_min_time = PROXY_BUDGET_RESCHEDULER_MIN_TIME
+ proxy_budget_rescheduler_max_time = PROXY_BUDGET_RESCHEDULER_MAX_TIME
+-proxy_batch_polling_interval = PROXY_BATCH_POLLING_INTERVAL
+ proxy_batch_write_at = PROXY_BATCH_WRITE_AT
+ proxy_config_reload_interval_seconds = PROXY_CONFIG_RELOAD_INTERVAL_SECONDS
+ litellm_master_key_hash = None
+@@ -4827,7 +4799,6 @@ class ProxyConfig:
+             premium_user, \
+             open_telemetry_logger, \
+             health_check_details, \
+-            proxy_batch_polling_interval, \
+             proxy_config_reload_interval_seconds, \
+             config_passthrough_endpoints
+ 
+@@ -5332,9 +5303,6 @@ class ProxyConfig:
+                     config_file_path=config_file_path,
+                 )
+ 
+-            if enterprise_proxy_config is not None:
+-                await enterprise_proxy_config.load_enterprise_config(general_settings)
+-
+             ## pass through endpoints
+             if general_settings.get("pass_through_endpoints", None) is not None:
+                 config_passthrough_endpoints = general_settings["pass_through_endpoints"]
+@@ -5358,10 +5326,6 @@ class ProxyConfig:
+             proxy_budget_rescheduler_max_time = general_settings.get(
+                 "proxy_budget_rescheduler_max_time", proxy_budget_rescheduler_max_time
+             )
+-            ## BATCH POLLING INTERVAL ##
+-            proxy_batch_polling_interval = general_settings.get(
+-                "proxy_batch_polling_interval", proxy_batch_polling_interval
+-            )
+             ## BATCH WRITER ##
+             proxy_batch_write_at = general_settings.get("proxy_batch_write_at", proxy_batch_write_at)
+             ## DB CONFIG RELOAD INTERVAL ##
+@@ -9179,65 +9143,6 @@ class ProxyStartupEvent:
+                     )
+                 except ValueError:
+                     verbose_proxy_logger.error("Invalid maximum_spend_logs_retention_interval value")
+-        ### CHECK BATCH COST ###
+-        if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
+-            try:
+-                from litellm_enterprise.proxy.common_utils.check_batch_cost import (
+-                    CheckBatchCost,
+-                )
+-
+-                check_batch_cost_job: Final = CheckBatchCost(
+-                    proxy_logging_obj=proxy_logging_obj,
+-                    prisma_client=prisma_client,
+-                    llm_router=llm_router,
+-                    track_unmanaged_batch_cost=general_settings.get("track_unmanaged_batch_cost", False),
+-                )
+-                await check_batch_cost_job.confirm_batch_processed_support()
+-                scheduler.add_job(
+-                    check_batch_cost_job.check_batch_cost,
+-                    "interval",
+-                    seconds=proxy_batch_polling_interval + random.randint(0, 30),  # Add small random offset
+-                    # REMOVED jitter parameter - major cause of memory leak
+-                    id="check_batch_cost_job",
+-                    replace_existing=True,
+-                    misfire_grace_time=APSCHEDULER_MISFIRE_GRACE_TIME,
+-                )
+-                verbose_proxy_logger.info("Batch cost check job scheduled successfully")
+-
+-            except Exception as e:
+-                verbose_proxy_logger.debug("Failed to setup batch cost checking: %s", e)
+-                verbose_proxy_logger.debug(
+-                    "Checking batch cost for LiteLLM Managed Files is an Enterprise Feature. Skipping..."
+-                )
+-
+-        ### CHECK RESPONSES COST ###
+-        if llm_router is not None and PROXY_BATCH_POLLING_ENABLED:
+-            try:
+-                from litellm_enterprise.proxy.common_utils.check_responses_cost import (
+-                    CheckResponsesCost,
+-                )
+-
+-                check_responses_cost_job: Final = CheckResponsesCost(
+-                    proxy_logging_obj=proxy_logging_obj,
+-                    prisma_client=prisma_client,
+-                    llm_router=llm_router,
+-                )
+-                scheduler.add_job(
+-                    check_responses_cost_job.check_responses_cost,
+-                    "interval",
+-                    seconds=proxy_batch_polling_interval + random.randint(0, 30),  # Add small random offset
+-                    # REMOVED jitter parameter - major cause of memory leak
+-                    id="check_responses_cost_job",
+-                    replace_existing=True,
+-                    misfire_grace_time=APSCHEDULER_MISFIRE_GRACE_TIME,
+-                )
+-                verbose_proxy_logger.info("Responses cost check job scheduled successfully")
+-
+-            except Exception as e:
+-                verbose_proxy_logger.debug("Failed to setup responses cost checking: %s", e)
+-                verbose_proxy_logger.debug(
+-                    "Checking responses cost for LiteLLM Managed Files is an Enterprise Feature. Skipping..."
+-                )
+ 
+         # MEMORY LEAK FIX: Start scheduler with paused=False to avoid backlog processing
+         # Do NOT reset job times to "now" as this can trigger the memory leak
+@@ -17492,7 +17397,6 @@ app.include_router(cache_settings_router)
+ app.include_router(coordination_redis_settings_router)
+ app.include_router(user_agent_analytics_router)
+ app.include_router(gateway_request_router)
+-app.include_router(enterprise_router)
+ app.include_router(ui_discovery_endpoints_router)
+ # Eager: /models/{name}:method overlaps with the OpenAI /models endpoint.
+ app.include_router(google_router)
+diff --git a/migrations/Dockerfile b/migrations/Dockerfile
+index c6d1b0cc46..383d036151 100644
+--- a/migrations/Dockerfile
++++ b/migrations/Dockerfile
+@@ -51,7 +51,6 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+ RUN --mount=type=cache,target=/root/.cache/uv \
+     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+     --mount=type=bind,source=uv.lock,target=uv.lock \
+-    --mount=type=bind,source=enterprise/pyproject.toml,target=enterprise/pyproject.toml \
+     --mount=type=bind,source=litellm-proxy-extras/pyproject.toml,target=litellm-proxy-extras/pyproject.toml \
+     uv sync --frozen --no-install-project --no-install-workspace --no-default-groups --no-editable \
+         --extra proxy \
+diff --git a/pyproject.toml b/pyproject.toml
+index 7e70b719cc..c4d7d2c8a7 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -68,7 +68,6 @@ proxy = [
+     "azure-storage-blob>=12.28.0,<13.0",
+     "mcp>=1.28.1,<2.0",
+     "litellm-proxy-extras==0.4.89",
+-    "litellm-enterprise==0.1.59",
+     "RestrictedPython>=8.1,<9.0",
+     "rich>=13.9.4,<14.0",
+     "InquirerPy>=0.3.4,<1.0",
+@@ -271,8 +270,6 @@ python-source = "."
+ bindings = "pyo3"
+ include = ["litellm/proxy/_experimental/out/**"]
+ exclude = [
+-    "litellm/proxy/enterprise",
+-    "litellm/proxy/enterprise/**",
+     "**/__pycache__",
+     "**/__pycache__/**",
+     "**/.pytest_cache",
+@@ -301,10 +298,9 @@ exclude-newer = "3 days"
+ 
+ [tool.uv.sources]
+ litellm-proxy-extras = { workspace = true }
+-litellm-enterprise = { workspace = true }
+ 
+ [tool.uv.workspace]
+-members = ["enterprise", "litellm-proxy-extras"]
++members = ["litellm-proxy-extras"]
+ 
+ [tool.isort]
+ profile = "black"
+diff --git a/uv.lock b/uv.lock
+index 49ffc34777..f000b32a96 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -16,7 +16,6 @@ exclude-newer-span = "P3D"
+ [manifest]
+ members = [
+     "litellm",
+-    "litellm-enterprise",
+     "litellm-proxy-extras",
+ ]
+ constraints = [
+@@ -4332,7 +4331,6 @@ proxy = [
+     { name = "gunicorn" },
+     { name = "hiredis" },
+     { name = "inquirerpy" },
+-    { name = "litellm-enterprise" },
+     { name = "litellm-proxy-extras" },
+     { name = "mcp" },
+     { name = "orjson" },
+@@ -4522,7 +4520,6 @@ requires-dist = [
+     { name = "jsonschema", specifier = ">=4.0.0,<5.0" },
+     { name = "keyring", marker = "extra == 'cli'", specifier = ">=25.6.0,<26.0" },
+     { name = "langfuse", marker = "extra == 'proxy-runtime'", specifier = ">=2.59.7,<3.0" },
+-    { name = "litellm-enterprise", marker = "extra == 'proxy'", editable = "enterprise" },
+     { name = "litellm-proxy-extras", marker = "extra == 'proxy'", editable = "litellm-proxy-extras" },
+     { name = "llm-sandbox", marker = "extra == 'proxy-runtime'", specifier = ">=0.3.39,<1.0" },
+     { name = "mangum", marker = "extra == 'proxy-runtime'", specifier = ">=0.17.0,<1.0" },
+@@ -4659,11 +4656,6 @@ proxy-dev = [
+     { name = "prometheus-client", specifier = "==0.20.0" },
+ ]
+ 
+-[[package]]
+-name = "litellm-enterprise"
+-version = "0.1.59"
+-source = { editable = "enterprise" }
+-
+ [[package]]
+ name = "litellm-proxy-extras"
+ version = "0.4.89"
